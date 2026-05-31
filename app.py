@@ -80,36 +80,68 @@ with tab_ingreso:
                 st.session_state.modo = None
 
 # ==========================================
-# PESTAÑA 2: DASHBOARD FINANCIERO
+# PESTAÑA 2: DASHBOARD FINANCIERO MENSUAL
 # ==========================================
 with tab_dashboard:
-    st.subheader("Rendimiento del Negocio")
+    st.subheader("Rendimiento del Negocio por Mes")
     
-    # Extraer los datos directamente de tu base de datos
+    # Extraer los datos de la base de datos
     res_servicios = supabase.table("servicios").select("*").execute()
     res_gastos = supabase.table("gastos").select("*").execute()
     
-    # Convertir los datos a tablas de Pandas (como si fueran hojas de Excel)
+    # Convertir a DataFrames de Pandas
     df_serv = pd.DataFrame(res_servicios.data)
     df_gast = pd.DataFrame(res_gastos.data)
     
-    # Calcular los totales
-    total_ingresos = df_serv['monto_cobrado'].sum() if not df_serv.empty else 0
-    total_gastos = df_gast['monto_gastado'].sum() if not df_gast.empty else 0
-    ganancia = total_ingresos - total_gastos
-    
-    # Mostrar las métricas en grande
-    col_ing, col_gas, col_neto = st.columns(3)
-    col_ing.metric("Ingresos Totales", f"${total_ingresos:,.0f}".replace(",", "."))
-    col_gas.metric("Gastos Totales", f"${total_gastos:,.0f}".replace(",", "."))
-    col_neto.metric("Ganancia Neta", f"${ganancia:,.0f}".replace(",", "."))
-    
-    st.markdown("---")
-    
-    # Mostrar una pequeña tabla con los últimos servicios ingresados
-    if not df_serv.empty:
-        st.write("**Últimos Servicios Registrados**")
-        df_mostrar = df_serv.sort_values(by="creado_en", ascending=False).head(5) # Muestra los últimos 5
-        st.dataframe(df_mostrar[['fecha', 'paciente', 'tipo_servicio', 'monto_cobrado']], use_container_width=True)
+    # Verificar si hay al menos un dato en alguna tabla
+    if not df_serv.empty or not df_gast.empty:
+        
+        # 1. Preparar las fechas (Lógica de Tabla Dinámica)
+        if not df_serv.empty:
+            df_serv['fecha'] = pd.to_datetime(df_serv['fecha'])
+            df_serv['Periodo'] = df_serv['fecha'].dt.strftime('%Y-%m') # Formato: 2026-05
+        
+        if not df_gast.empty:
+            df_gast['fecha'] = pd.to_datetime(df_gast['fecha'])
+            df_gast['Periodo'] = df_gast['fecha'].dt.strftime('%Y-%m')
+
+        # 2. Consolidar una lista única de todos los meses existentes
+        periodos_serv = df_serv['Periodo'].unique().tolist() if not df_serv.empty else []
+        periodos_gast = df_gast['Periodo'].unique().tolist() if not df_gast.empty else []
+        todos_los_periodos = sorted(list(set(periodos_serv + periodos_gast)), reverse=True)
+
+        if todos_los_periodos:
+            # 3. Crear el Segmentador (Filtro desplegable)
+            mes_seleccionado = st.selectbox("📅 Selecciona el mes a visualizar:", todos_los_periodos)
+
+            # 4. Filtrar las tablas según el mes elegido
+            df_serv_filtrado = df_serv[df_serv['Periodo'] == mes_seleccionado] if not df_serv.empty else pd.DataFrame()
+            df_gast_filtrado = df_gast[df_gast['Periodo'] == mes_seleccionado] if not df_gast.empty else pd.DataFrame()
+
+            # 5. Calcular los totales del mes
+            ingresos_mes = df_serv_filtrado['monto_cobrado'].sum() if not df_serv_filtrado.empty else 0
+            gastos_mes = df_gast_filtrado['monto_gastado'].sum() if not df_gast_filtrado.empty else 0
+            ganancia_mes = ingresos_mes - gastos_mes
+            
+            # Mostrar las métricas
+            col_ing, col_gas, col_neto = st.columns(3)
+            col_ing.metric("Ingresos", f"${ingresos_mes:,.0f}".replace(",", "."))
+            col_gas.metric("Gastos Operativos", f"${gastos_mes:,.0f}".replace(",", "."))
+            col_neto.metric("Ganancia Neta", f"${ganancia_mes:,.0f}".replace(",", "."))
+            
+            st.markdown("---")
+            
+            # Mostrar el detalle de atenciones solo de ese mes
+            if not df_serv_filtrado.empty:
+                st.write(f"**Detalle de Servicios - {mes_seleccionado}**")
+                # Ocultar columnas técnicas y ordenar por fecha
+                df_mostrar = df_serv_filtrado[['fecha', 'paciente', 'tipo_servicio', 'monto_cobrado', 'metodo_pago']].sort_values(by="fecha", ascending=False)
+                # Formatear la fecha para que se vea bonita en la tabla sin la hora
+                df_mostrar['fecha'] = df_mostrar['fecha'].dt.strftime('%d-%m-%Y')
+                st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
+            else:
+                st.info("No hay servicios registrados en este mes.")
+        else:
+            st.info("No hay fechas válidas para armar el filtro.")
     else:
-        st.info("Aún no hay datos de servicios para mostrar.")
+        st.info("Aún no hay datos en el sistema. ¡Ingresa el primer registro para ver el panel mensual!")
