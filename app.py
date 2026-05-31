@@ -6,6 +6,28 @@ import pandas as pd
 # Configuración de la página
 st.set_page_config(page_title="DANIMALITOS App", page_icon="🐾", layout="centered")
 
+# === SISTEMA DE SEGURIDAD (CANDADO) ===
+def check_password():
+    """Verifica si el usuario ingresó la contraseña correcta."""
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+
+    if not st.session_state["password_correct"]:
+        st.warning("🔒 Aplicación Privada")
+        st.text_input("Ingresa la contraseña de acceso:", type="password", key="password")
+        
+        if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
+            st.session_state["password_correct"] = True
+            st.rerun()
+        elif st.session_state["password"] != "":
+            st.error("Contraseña incorrecta.")
+        return False
+    return True
+
+if not check_password():
+    st.stop()  # Detiene la aplicación aquí si no hay clave
+# =======================================
+
 # Conexión a Supabase
 @st.cache_resource
 def init_connection():
